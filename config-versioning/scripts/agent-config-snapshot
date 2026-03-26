@@ -1,0 +1,219 @@
+#!/usr/bin/env bash
+# agent-config-snapshot - Snapshot agent configuration files into a central git repo
+# Usage: agent-config-snapshot [agent-name|all] [--tag TAG_NAME]
+#
+# Examples:
+#   agent-config-snapshot all
+#   agent-config-snapshot ada
+#   agent-config-snapshot ada --tag "ada-w13-success-4.2-autonomy-3.8"
+
+set -euo pipefail
+
+REPO_DIR="$HOME/.openclaw/workspace/agent-configs"
+WORKSPACE_BASE="$HOME/.openclaw"
+SKILLS_SRC="$HOME/.openclaw/skills"
+GIT_AUTHOR_NAME="Vítor Andrade"
+GIT_AUTHOR_EMAIL="victor@wanderclan.eu"
+
+# Agent name to workspace directory mapping
+declare -A AGENT_WORKSPACES=(
+  [signora]="workspace"
+  [ada]="workspace-ada"
+  [patsy]="workspace-patsy"
+  [rita]="workspace-rita"
+  [colette]="workspace-colette"
+  [mahlangu]="workspace-mahlangu"
+  [ciro]="workspace-ciro"
+  [ferruccio]="workspace-ferruccio"
+  [able]="workspace-able"
+  [alfred]="workspace-alfred"
+)
+
+CONFIG_FILES=(SOUL.md IDENTITY.md MEMORY.md)
+
+usage() {
+  echo "Usage: agent-config-snapshot [agent-name|all] [--tag TAG_NAME]"
+  echo ""
+  echo "Arguments:"
+  echo "  agent-name    Name of the agent to snapshot (signora, ada, patsy, rita,"
+  echo "                colette, mahlangu, ciro, ferruccio, able, alfred)"
+  echo "  all           Snapshot all agents"
+  echo ""
+  echo "Options:"
+  echo "  --tag TAG     Create a git tag after committing (e.g. ada-w13-success-4.2)"
+  echo ""
+  echo "Examples:"
+  echo "  agent-config-snapshot all"
+  echo "  agent-config-snapshot ada"
+  echo "  agent-config-snapshot ada --tag ada-w13-success-4.2-autonomy-3.8"
+  exit 1
+}
+
+# Parse arguments
+AGENT_ARG=""
+TAG_NAME=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --tag)
+      shift
+      TAG_NAME="${1:-}"
+      if [[ -z "$TAG_NAME" ]]; then
+        echo "ERROR: --tag requires a value" >&2
+        exit 1
+      fi
+      ;;
+    --help|-h)
+      usage
+      ;;
+    *)
+      if [[ -z "$AGENT_ARG" ]]; then
+        AGENT_ARG="$1"
+      else
+        echo "ERROR: Unexpected argument: $1" >&2
+        usage
+      fi
+      ;;
+  esac
+  shift
+done
+
+if [[ -z "$AGENT_ARG" ]]; then
+  usage
+fi
+
+# Initialize or verify repo
+init_repo() {
+  if [[ ! -d "$REPO_DIR/.git" ]]; then
+    echo "Initializing agent-configs repository at $REPO_DIR"
+    mkdir -p "$REPO_DIR"
+    git -C "$REPO_DIR" init
+    git -C "$REPO_DIR" config user.name "$GIT_AUTHOR_NAME"
+    git -C "$REPO_DIR" config user.email "$GIT_AUTHOR_EMAIL"
+    echo "# Agent Config Archive" > "$REPO_DIR/.gitkeep"
+    git -C "$REPO_DIR" add .gitkeep
+    git -C "$REPO_DIR" commit --allow-empty -m "init: initialize agent-configs repository"
+  fi
+}
+
+# Snapshot a single agent
+snapshot_agent() {
+  local agent="$1"
+  local ws_dir="${AGENT_WORKSPACES[$agent]:-}"
+
+  if [[ -z "$ws_dir" ]]; then
+    echo "ERROR: Unknown agent: $agent" >&2
+    echo "Known agents: ${!AGENT_WORKSPACES[*]}" >&2
+    return 1
+  fi
+
+  local src_dir="$WORKSPACE_BASE/$ws_dir"
+  local dest_dir="$REPO_DIR/$agent"
+
+  if [[ ! -d "$src_dir" ]]; then
+    echo "WARNING: Workspace not found for $agent at $src_dir -- skipping" >&2
+    return 0
+  fi
+
+  mkdir -p "$dest_dir"
+
+  local copied=0
+  for f in "${CONFIG_FILES[@]}"; do
+    if [[ -f "$src_dir/$f" ]]; then
+      cp "$src_dir/$f" "$dest_dir/$f"
+      copied=$((copied + 1))
+    else
+      # Remove stale copy if source no longer exists
+      rm -f "$dest_dir/$f"
+    fi
+  done
+
+  echo "  $agent: copied $copied config file(s) from $ws_dir"
+}
+
+# Snapshot custom skills
+snapshot_skills() {
+  if [[ ! -d "$SKILLS_SRC" ]]; then
+    echo "  skills: no custom skills directory found at $SKILLS_SRC"
+    return 0
+  fi
+
+  local dest_dir="$REPO_DIR/skills"
+
+  # Clean and rebuild skills directory for a clean copy
+  rm -rf "$dest_dir"
+  mkdir -p "$dest_dir"
+
+  local count=0
+  for skill_dir in "$SKILLS_SRC"/*/; do
+    [[ -d "$skill_dir" ]] || continue
+    local skill_name
+    skill_name="$(basename "$skill_dir")"
+    local skill_dest="$dest_dir/$skill_name"
+    mkdir -p "$skill_dest"
+
+    # Copy SKILL.md and any markdown/config/script files (not binaries or large data)
+    find "$skill_dir" -maxdepth 3 \( -name "*.md" -o -name "*.json" -o -name "*.yaml" -o -name "*.yml" -o -name "*.sh" -o -name "*.env.example" \) \
+      -not -path "*/node_modules/*" | while read -r f; do
+        # Preserve relative path within the skill dir
+        rel="${f#$skill_dir}"
+        dest_file="$skill_dest/$rel"
+        mkdir -p "$(dirname "$dest_file")"
+        cp "$f" "$dest_file"
+    done
+
+    count=$((count + 1))
+  done
+
+  echo "  skills: snapshotted $count custom skill(s)"
+}
+
+# Main flow
+init_repo
+
+TIMESTAMP="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+CHANGED_AGENTS=()
+
+if [[ "$AGENT_ARG" == "all" ]]; then
+  echo "Snapshotting all agents..."
+  for agent in "${!AGENT_WORKSPACES[@]}"; do
+    snapshot_agent "$agent" && CHANGED_AGENTS+=("$agent")
+  done
+  snapshot_skills
+else
+  snapshot_agent "$AGENT_ARG" && CHANGED_AGENTS+=("$AGENT_ARG")
+fi
+
+# Stage all changes
+git -C "$REPO_DIR" add -A
+
+# Check if there is anything to commit
+if git -C "$REPO_DIR" diff --cached --quiet; then
+  echo "No changes detected since last snapshot."
+else
+  if [[ "$AGENT_ARG" == "all" ]]; then
+    COMMIT_MSG="snapshot: all agents @ $TIMESTAMP"
+  else
+    COMMIT_MSG="snapshot: $AGENT_ARG @ $TIMESTAMP"
+  fi
+
+  GIT_AUTHOR_NAME="$GIT_AUTHOR_NAME" \
+  GIT_AUTHOR_EMAIL="$GIT_AUTHOR_EMAIL" \
+  GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" \
+  GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL" \
+    git -C "$REPO_DIR" commit -m "$COMMIT_MSG"
+
+  echo "Committed: $COMMIT_MSG"
+fi
+
+# Create tag if requested
+if [[ -n "$TAG_NAME" ]]; then
+  GIT_AUTHOR_NAME="$GIT_AUTHOR_NAME" \
+  GIT_AUTHOR_EMAIL="$GIT_AUTHOR_EMAIL" \
+  GIT_COMMITTER_NAME="$GIT_AUTHOR_NAME" \
+  GIT_COMMITTER_EMAIL="$GIT_AUTHOR_EMAIL" \
+    git -C "$REPO_DIR" tag -a "$TAG_NAME" -m "eval tag: $TAG_NAME @ $TIMESTAMP"
+  echo "Tagged: $TAG_NAME"
+fi
+
+echo "Done. Repo at: $REPO_DIR"

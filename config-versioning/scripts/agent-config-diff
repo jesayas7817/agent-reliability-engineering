@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# agent-config-diff - Show what changed in an agent's config since last snapshot
+# Usage: agent-config-diff <agent-name> [--from REF] [--to REF]
+#
+# Examples:
+#   agent-config-diff ada
+#   agent-config-diff ada --from HEAD~3
+#   agent-config-diff ada --from ada-w12-baseline --to ada-w13-success-4.2
+
+set -euo pipefail
+
+REPO_DIR="$HOME/.openclaw/workspace/agent-configs"
+
+usage() {
+  echo "Usage: agent-config-diff <agent-name> [--from REF] [--to REF]"
+  echo ""
+  echo "Arguments:"
+  echo "  agent-name    Agent to diff (signora, ada, patsy, rita, colette,"
+  echo "                mahlangu, ciro, ferruccio, able, alfred)"
+  echo ""
+  echo "Options:"
+  echo "  --from REF    Git ref to diff from (default: HEAD~1)"
+  echo "  --to REF      Git ref to diff to (default: working tree / HEAD)"
+  echo ""
+  echo "Examples:"
+  echo "  agent-config-diff ada"
+  echo "  agent-config-diff ada --from HEAD~5"
+  echo "  agent-config-diff ada --from ada-w12-baseline --to ada-w13-success-4.2"
+  exit 1
+}
+
+AGENT_ARG=""
+FROM_REF=""
+TO_REF=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --from)
+      shift
+      FROM_REF="${1:-}"
+      ;;
+    --to)
+      shift
+      TO_REF="${1:-}"
+      ;;
+    --help|-h)
+      usage
+      ;;
+    *)
+      if [[ -z "$AGENT_ARG" ]]; then
+        AGENT_ARG="$1"
+      else
+        echo "ERROR: Unexpected argument: $1" >&2
+        usage
+      fi
+      ;;
+  esac
+  shift
+done
+
+if [[ -z "$AGENT_ARG" ]]; then
+  usage
+fi
+
+if [[ ! -d "$REPO_DIR/.git" ]]; then
+  echo "ERROR: agent-configs repo not found at $REPO_DIR" >&2
+  echo "Run: agent-config-snapshot all" >&2
+  exit 1
+fi
+
+# Default refs
+if [[ -z "$FROM_REF" ]]; then
+  # If there's only one commit, diff against empty tree
+  COMMIT_COUNT=$(git -C "$REPO_DIR" rev-list --count HEAD 2>/dev/null || echo 0)
+  if [[ "$COMMIT_COUNT" -le 1 ]]; then
+    FROM_REF="$(git -C "$REPO_DIR" hash-object -t tree /dev/null)"
+  else
+    FROM_REF="HEAD~1"
+  fi
+fi
+
+# Check the agent directory exists in the repo
+if ! git -C "$REPO_DIR" ls-tree -d "${TO_REF:-HEAD}" "$AGENT_ARG" &>/dev/null; then
+  # Maybe it's a fresh snapshot -- check working tree
+  if [[ ! -d "$REPO_DIR/$AGENT_ARG" ]]; then
+    echo "ERROR: No config found for agent '$AGENT_ARG' in the repo." >&2
+    echo "Run: agent-config-snapshot $AGENT_ARG" >&2
+    exit 1
+  fi
+fi
+
+echo "================================================================"
+echo " Agent config diff: $AGENT_ARG"
+if [[ -n "$TO_REF" ]]; then
+  echo " From: $FROM_REF  ->  To: $TO_REF"
+else
+  echo " From: $FROM_REF  ->  current HEAD"
+fi
+echo "================================================================"
+echo ""
+
+if [[ -n "$TO_REF" ]]; then
+  git -C "$REPO_DIR" diff "$FROM_REF" "$TO_REF" -- "$AGENT_ARG/" || true
+else
+  git -C "$REPO_DIR" diff "$FROM_REF" HEAD -- "$AGENT_ARG/" || true
+fi
+
+# Also show uncommitted local changes if no TO_REF specified
+if [[ -z "$TO_REF" ]]; then
+  UNSTAGED=$(git -C "$REPO_DIR" diff -- "$AGENT_ARG/" 2>/dev/null)
+  if [[ -n "$UNSTAGED" ]]; then
+    echo ""
+    echo "--- Uncommitted changes (not yet snapshotted) ---"
+    echo "$UNSTAGED"
+  fi
+fi
+
+echo ""
+echo "--- Recent snapshots for $AGENT_ARG ---"
+git -C "$REPO_DIR" log --oneline --follow -- "$AGENT_ARG/" 2>/dev/null | head -10 || echo "(no history yet)"

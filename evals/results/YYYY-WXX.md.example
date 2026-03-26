@@ -1,0 +1,62 @@
+# Week 13 (Mar 19-26, 2026) — BASELINE
+
+First evaluation week. These scores establish the baseline for all future comparisons.
+
+## Automated Metrics
+
+| Agent | Memory Files | Task Entries | Total Sessions (all time) |
+|-------|-------------|--------------|--------------------------|
+| Signora | 13 | ~90 | 100 |
+| Ada | 3 | ~21 | 98 |
+| Patsy | 0 | 0 | 17 |
+| Rita | 0 | 0 | 13 |
+
+### Incident Keywords (this week)
+| Keyword | Mentions |
+|---------|----------|
+| error | 21 |
+| fix | 15 |
+| down | 12 |
+| permission | 11 |
+| restart | 10 |
+| broken | 5 |
+| failed | 2 |
+| crash | 0 |
+
+## Manual Scoring
+
+_To be completed during Friday review. Score 3-5 representative tasks per agent._
+
+### Ada 🔬
+
+| Task | Description | Success (1-5) | Autonomy (1-5) | Efficiency (1-5) | Notes |
+|------|-------------|---------------|-----------------|-------------------|-------|
+| | | | | | |
+| | | | | | |
+| | | | | | |
+
+### Patsy 🩹
+
+| Task | Description | Success (1-5) | Autonomy (1-5) | Efficiency (1-5) | Notes |
+|------|-------------|---------------|-----------------|-------------------|-------|
+| | | | | | |
+
+### Signora 🎭
+
+| Task | Description | Success (1-5) | Autonomy (1-5) | Efficiency (1-5) | Notes |
+|------|-------------|---------------|-----------------|-------------------|-------|
+| | | | | | |
+
+## Observations
+
+- Ada dominates activity (98 sessions, nearly tied with Signora's 100)
+- Patsy and Rita barely used this week (0 memory files)
+- High incident keyword density: 76 mentions across fix/error/down/permission/restart
+- Need to start tracking cost per agent per week (requires API integration or manual logging)
+
+## Action Items
+
+- [ ] Complete manual scoring for 3-5 Ada tasks from this week
+- [ ] Set up cost tracking (even manual logging from Anthropic console)
+- [ ] Run first golden set task for Ada (pick 3 from routine category)
+- [ ] Add session token counts to automated collection

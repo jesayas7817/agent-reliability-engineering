@@ -1,0 +1,155 @@
+#!/usr/bin/env bash
+# agent-config-rollback - Restore an agent's config files from a previous git snapshot
+# Usage: agent-config-rollback <agent-name> <git-ref>
+#
+# Examples:
+#   agent-config-rollback ada HEAD~2
+#   agent-config-rollback ada ada-w12-baseline
+#   agent-config-rollback ada abc1234
+
+set -euo pipefail
+
+REPO_DIR="$HOME/.openclaw/workspace/agent-configs"
+WORKSPACE_BASE="$HOME/.openclaw"
+
+declare -A AGENT_WORKSPACES=(
+  [signora]="workspace"
+  [ada]="workspace-ada"
+  [patsy]="workspace-patsy"
+  [rita]="workspace-rita"
+  [colette]="workspace-colette"
+  [mahlangu]="workspace-mahlangu"
+  [ciro]="workspace-ciro"
+  [ferruccio]="workspace-ferruccio"
+  [able]="workspace-able"
+  [alfred]="workspace-alfred"
+)
+
+CONFIG_FILES=(SOUL.md IDENTITY.md MEMORY.md)
+
+usage() {
+  echo "Usage: agent-config-rollback <agent-name> <git-ref>"
+  echo ""
+  echo "Arguments:"
+  echo "  agent-name    Agent to roll back (signora, ada, patsy, rita, colette,"
+  echo "                mahlangu, ciro, ferruccio, able, alfred)"
+  echo "  git-ref       Git tag, commit hash, or ref (e.g. HEAD~2, ada-w12-baseline)"
+  echo ""
+  echo "Examples:"
+  echo "  agent-config-rollback ada HEAD~2"
+  echo "  agent-config-rollback ada ada-w12-baseline"
+  echo "  agent-config-rollback ada abc1234f"
+  echo ""
+  echo "Tip: Use 'agent-config-diff ada' to inspect changes before rolling back."
+  exit 1
+}
+
+if [[ $# -lt 2 ]]; then
+  usage
+fi
+
+AGENT="$1"
+GIT_REF="$2"
+
+# Validate agent
+WS_DIR="${AGENT_WORKSPACES[$AGENT]:-}"
+if [[ -z "$WS_DIR" ]]; then
+  echo "ERROR: Unknown agent: $AGENT" >&2
+  echo "Known agents: ${!AGENT_WORKSPACES[*]}" >&2
+  exit 1
+fi
+
+if [[ ! -d "$REPO_DIR/.git" ]]; then
+  echo "ERROR: agent-configs repo not found at $REPO_DIR" >&2
+  echo "Run: agent-config-snapshot all" >&2
+  exit 1
+fi
+
+# Resolve the git ref
+RESOLVED_SHA=$(git -C "$REPO_DIR" rev-parse --verify "$GIT_REF" 2>/dev/null || true)
+if [[ -z "$RESOLVED_SHA" ]]; then
+  echo "ERROR: Cannot resolve git ref: $GIT_REF" >&2
+  exit 1
+fi
+
+SHORT_SHA="${RESOLVED_SHA:0:8}"
+DEST_DIR="$WORKSPACE_BASE/$WS_DIR"
+
+echo "================================================================"
+echo " Rollback: $AGENT"
+echo " From ref: $GIT_REF (resolved: $SHORT_SHA)"
+echo " Target:   $DEST_DIR"
+echo "================================================================"
+echo ""
+
+# Show what files exist at that ref
+echo "Files available at $GIT_REF for agent '$AGENT':"
+git -C "$REPO_DIR" ls-tree --name-only "$GIT_REF" "$AGENT/" 2>/dev/null || echo "  (none found)"
+echo ""
+
+# Show a quick diff of what would change
+echo "Changes that will be applied (current vs $GIT_REF):"
+echo ""
+for f in "${CONFIG_FILES[@]}"; do
+  REPO_FILE="$AGENT/$f"
+  # Get content at that ref
+  FILE_AT_REF=$(git -C "$REPO_DIR" show "$GIT_REF:$REPO_FILE" 2>/dev/null || echo "")
+  CURRENT_FILE="$DEST_DIR/$f"
+
+  if [[ -z "$FILE_AT_REF" && ! -f "$CURRENT_FILE" ]]; then
+    continue  # Neither exists, skip
+  elif [[ -z "$FILE_AT_REF" ]]; then
+    echo "  $f: WOULD BE REMOVED (does not exist at $GIT_REF)"
+  elif [[ ! -f "$CURRENT_FILE" ]]; then
+    echo "  $f: WOULD BE CREATED (does not exist currently)"
+  else
+    DIFF=$(diff <(cat "$CURRENT_FILE") <(echo "$FILE_AT_REF") || true)
+    if [[ -n "$DIFF" ]]; then
+      echo "  $f: WOULD BE CHANGED"
+      echo "$DIFF" | head -30 | sed 's/^/    /'
+      LINE_COUNT=$(echo "$DIFF" | wc -l)
+      if [[ "$LINE_COUNT" -gt 30 ]]; then
+        echo "    ... ($LINE_COUNT total diff lines)"
+      fi
+    else
+      echo "  $f: no change"
+    fi
+  fi
+done
+
+echo ""
+echo "WARNING: This will overwrite the current config files for agent '$AGENT'."
+echo "It is recommended to run 'agent-config-snapshot $AGENT' first to preserve current state."
+echo ""
+printf "Apply rollback? [y/N] "
+read -r CONFIRM
+
+if [[ "$CONFIRM" != "y" && "$CONFIRM" != "Y" ]]; then
+  echo "Rollback cancelled."
+  exit 0
+fi
+
+echo ""
+echo "Applying rollback..."
+
+RESTORED=0
+SKIPPED=0
+
+for f in "${CONFIG_FILES[@]}"; do
+  REPO_FILE="$AGENT/$f"
+  FILE_CONTENT=$(git -C "$REPO_DIR" show "$GIT_REF:$REPO_FILE" 2>/dev/null || echo "")
+
+  if [[ -n "$FILE_CONTENT" ]]; then
+    echo "$FILE_CONTENT" > "$DEST_DIR/$f"
+    echo "  Restored: $f"
+    RESTORED=$((RESTORED + 1))
+  else
+    echo "  Skipped:  $f (not found at $GIT_REF)"
+    SKIPPED=$((SKIPPED + 1))
+  fi
+done
+
+echo ""
+echo "Rollback complete: $RESTORED file(s) restored, $SKIPPED skipped."
+echo ""
+echo "Note: Run 'agent-config-snapshot $AGENT' to record this rollback in history."
